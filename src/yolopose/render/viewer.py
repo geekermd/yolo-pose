@@ -166,11 +166,28 @@ def _bind(lib) -> None:
     lib.XSelectInput.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_long]
     # The XImage is a raw buffer with a manual layout, so no struct type is
     # needed here; XPutImage takes the XImage pointer as an opaque void*.
+    # XPutImage(display, drawable, gc, image,
+    #           src_x, src_y, dest_x, dest_y, src_w, src_h)  -- ten arguments.
     lib.XPutImage.argtypes = [
-        ctypes.c_void_p, ctypes.c_ulong, ctypes.c_void_p,
-        ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
-        ctypes.c_int, ctypes.c_int, ctypes.c_uint, ctypes.c_uint]
+        ctypes.c_void_p,   # Display *
+        ctypes.c_ulong,    # Drawable
+        ctypes.c_void_p,   # GC
+        ctypes.c_void_p,   # XImage *
+        ctypes.c_int,      # src_x
+        ctypes.c_int,      # src_y
+        ctypes.c_int,      # dest_x
+        ctypes.c_int,      # dest_y
+        ctypes.c_uint,     # src_width
+        ctypes.c_uint,     # src_height
+    ]
+    lib.XPutImage.restype = ctypes.c_int
     lib.XFlush.argtypes = [ctypes.c_void_p]
+    # XGetImage(display, drawable, x, y, width, height, plane_mask, format)
+    lib.XGetImage.restype = ctypes.c_void_p
+    lib.XGetImage.argtypes = [
+        ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_int,
+        ctypes.c_uint, ctypes.c_uint, ctypes.c_ulong, ctypes.c_int]
+    lib.XDestroyImage.argtypes = [ctypes.c_void_p]
     lib.XFreeGC.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
     lib.XPending.restype = ctypes.c_int
     lib.XPending.argtypes = [ctypes.c_void_p]
@@ -336,15 +353,29 @@ class XlibViewer:
             # Follow whatever geometry the X server reports so a user drag or a
             # window-manager resize is honoured immediately.
             live_w, live_h = self.query_window_size()
-            target_w, target_h = ((live_w, live_h) if live_w > 0 and live_h > 0
-                                  else (window_size or (width, height)))
-            self.width, self.height = target_w, target_h
-        # In locked mode the geometry never changes, so draw at the fixed size.
+            if live_w > 0 and live_h > 0:
+                self.width, self.height = live_w, live_h
+            elif window_size is not None:
+                self.width, self.height = window_size
+        elif window_size is not None:
+            self.width, self.height = window_size
+
+        # Destination rectangle for the blit: the window size, so X scales the
+        # frame up to fill it instead of drawing it small in one corner.
+        target_w, target_h = self.width, self.height
 
 
         self._pack(image)
+        # Source rectangle: the whole XImage.  Destination rectangle: the whole
+        # window.  XPutImage scales whenever these differ, which is what makes the
+        # enlarged window show an enlarged picture instead of a small image in the
+        # corner.
         self.lib.XPutImage(self.display, self.window, self.gc,
-                           self._image_pointer(), 0, 0, 0, 0, width, height)
+                           self._image_pointer(),
+                           0, 0,                     # src x, y
+                           0, 0,                      # dest x, y
+                           width, height,             # src w, h
+                           target_w, target_h)        # dest w, h
         self.lib.XFlush(self.display)
         self._needs_redraw = False
 

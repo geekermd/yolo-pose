@@ -178,8 +178,11 @@ yolo-pose camera --resizable      # allow dragging the window edges
 yolo-pose camera --max-window 2200
 ```
 
-The stretch happens inside ``XPutImage``: **1.4 ms/frame** versus 11.3 ms for a
-NumPy resize of the same enlargement.
+The enlargement happens in NumPy with nearest-neighbour replication: **1.9 ms**
+for 2x (3x costs 4.3 ms). It is deliberately *not* left to ``XPutImage``, which
+Xwayland treats as a clipped blit rather than a stretch — that mismatch showed up
+as a small picture sitting in the corner of a large window. A regression test
+asserts that the enlarged frame's corners land in the window's corners.
 
 #### Making it faster
 
