@@ -186,13 +186,35 @@ asserts that the enlarged frame's corners land in the window's corners.
 
 #### Making it faster
 
-Measured on the reference machine (AMD Ryzen AI 9 H 365, 20 threads, 640x480):
+The display and the model are **decoupled by default**: inference runs on a
+background thread against a latest-only frame slot, so the preview always draws
+the newest frame at the camera's own rate while the overlay updates as results
+arrive. Use `--sync` to make the preview wait for each inference instead.
 
-| Configuration | Per frame | Frame rate |
-|---|---|---|
-| Pose only | 33.6 ms | **29.7 FPS** (the camera's own limit) |
-| Pose + face | 53.6 ms | 18.7 FPS |
-| Pose + face, `--detect-every 3` | — | display keeps up, overlay updated every 3rd frame |
+Measured end-to-end on 640x480 -> a 1280x960 window, AMD Ryzen AI 9 H 365:
+
+| Mode | Display frame rate |
+|---|---|
+| `--sync` (preview waits for the model) | 21.1 FPS |
+| **async (default)** | **28.2 FPS** — the camera itself tops out at 29.5 FPS |
+
+Inference costs ~34 ms per frame, so anything that waits on it cannot exceed
+~29 FPS; running it asynchronously removes that coupling entirely.
+
+What was measured and rejected:
+
+| Idea | Result |
+|---|---|
+| More ONNX Runtime threads | Worse: 8 threads 30.5 ms, 20 threads 59.6 ms |
+| CPU pinning to the 5.09 GHz cores | No gain (33.1 ms vs 30.5 ms) |
+| Many single-thread sessions in parallel | Only 30-35 FPS total throughput |
+| INT8 dynamic quantisation | 3x *slower* (110 ms vs 34 ms) |
+| FP16 weights | 9% faster (30.5 ms vs 33.6 ms) |
+| JPEG capture (`MJPG`) | Only helps above 640x480; YUYV is fine at 640x480 |
+
+The hard limit is computation: YOLOv8n-pose needs ~30 ms per 640x640 frame on
+this CPU. Going meaningfully beyond ~30 FPS needs a smaller input resolution
+(re-export), which is a model-side change rather than a runtime one.
 
 * **Thread count matters more than anything else.** ONNX Runtime's default used
   only a few of 20 threads (53 ms/frame for pose alone). A sweep showed 8 threads

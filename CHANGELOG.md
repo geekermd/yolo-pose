@@ -37,10 +37,17 @@ First release.
 - Local browser demo (`yolo-pose demo`) with drag-and-drop upload, live pose and
   face rendering, and a preloaded sample gallery.
 - Debian packaging for `arch=all` plus native `amd64`/`arm64` builds.
-- 99 unit tests (import integrity, ioctl ABI, pixel formats, accelerator
-  detection) and a layer-by-layer comparison tool for ONNX Runtime parity.
+- 114 unit tests (import integrity, ioctl ABI, pixel formats, accelerator
+  detection, async worker, display scaling) and a layer-by-layer comparison tool
+  for ONNX Runtime parity.
 
 ### Performance
+- Asynchronous inference by default: the preview no longer waits for the model,
+  taking the end-to-end display rate from 21.1 to 28.2 FPS (the camera caps at
+  29.5). `--sync` restores the blocking behaviour.
+- Documented the measurements behind the tuning: thread sweep (8 optimal, 20
+  worse), CPU pinning (no gain), parallel single-thread sessions (30-35 FPS
+  ceiling), INT8 dynamic quantisation (3x slower), FP16 (9% faster).
 - ONNX Runtime thread count is now tuned by default (capped at 8): 53 ms/frame
   down to 26 ms on the 20-thread reference machine.
 - Measured end-to-end on 640x480 camera frames: pose 27.0 ms, face 8.1 ms,

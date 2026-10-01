@@ -95,6 +95,12 @@ def _build_parser() -> argparse.ArgumentParser:
                             "(default: 1600)")
     p_cam.add_argument("--resizable", action="store_true",
                        help="allow dragging the window edges (default: locked)")
+    p_cam.add_argument("--async", dest="async_infer", action="store_true",
+                       default=None,
+                       help="run inference on a background thread so the preview "
+                            "always shows the newest frame (default: on)")
+    p_cam.add_argument("--sync", dest="async_infer", action="store_false",
+                       help="block the preview on every inference")
     p_cam.add_argument("--detect-every", type=int, default=1, metavar="N",
                        help="run inference every Nth frame and reuse the last "
                             "annotations in between (1 = every frame). Raises the "
@@ -573,13 +579,38 @@ def command_camera(args) -> int:
         if args.detect_every > 1:
             print(f"detecting every {args.detect_every} frame(s); the overlay is "
                   f"reused in between")
-        mode = "parallel" if run_parallel else "sequential"
+        mode = ("async" if (args.async_infer is not False)
+                else "parallel" if run_parallel else "sequential")
         print(f"tasks: {tasks}  ({mode})")
         print("press q or Esc in the window (or Ctrl-C here) to stop")
 
         frame_index = 0
         smoothed = 0.0
         with camera:
+            # Asynchronous inference: the preview never waits for the model.
+            # Frames go into a latest-only slot, the worker keeps the newest
+            # overlay available, and the render loop draws at camera speed.
+            use_async = (args.async_infer is not False) and (
+                detector is not None or recognizer is not None)
+            pose_worker = None
+            face_worker = None
+            if use_async:
+                from .vision.async_infer import InferenceWorker
+                if detector is not None:
+                    pose_worker = InferenceWorker(
+                        lambda f: detector.detect(f, keypoint_threshold=args.kpt_conf),
+                        name="yolo-pose-pose")
+                if recognizer is not None:
+                    face_worker = InferenceWorker(
+                        lambda f: recognizer.recognize(
+                            f, score_threshold=args.face_score),
+                        name="yolo-pose-face")
+                # Prime one result so the very first drawn frame is annotated.
+                if pose_worker is not None:
+                    last_pose_result = pose_worker.wait_for_result(5.0)
+                if face_worker is not None:
+                    last_face_result = face_worker.wait_for_result(5.0)
+
             # Cached detection results: on skipped frames the overlay is redrawn
             # from the previous detections, which is both cheaper and simpler
             # than re-running inference.
@@ -620,6 +651,63 @@ def command_camera(args) -> int:
                     draw_hud(canvas, hud)
                     if viewer is not None:
                         viewer.show(canvas)
+                        if hasattr(viewer, "poll_events") and not viewer.poll_events():
+                            break
+                    if recorder is not None and recorder.stdin is not None:
+                        try:
+                            recorder.stdin.write(
+                                np.ascontiguousarray(canvas).tobytes())
+                            frames_written += 1
+                        except (BrokenPipeError, OSError):
+                            recorder = None
+                    frame_index += 1
+                    if args.frames and frame_index >= args.frames:
+                        break
+                    continue
+
+                pose_serial = face_serial = 0
+                if pose_worker is not None or face_worker is not None:
+                    if pose_worker is not None:
+                        pose_worker.submit(frame)
+                    if face_worker is not None:
+                        face_worker.submit(frame)
+                    # Pick up any newer overlay produced since the last frame.
+                    if pose_worker is not None:
+                        result, pose_serial = pose_worker.latest()
+                        if result is not None:
+                            last_pose_result = result
+                    if face_worker is not None:
+                        fres, face_serial = face_worker.latest()
+                        if fres is not None:
+                            last_face_result = fres
+                    canvas = np.ascontiguousarray(frame.copy())
+                    person_count = 0
+                    if last_pose_result is not None:
+                        canvas = _annotate(frame, last_pose_result, line_width=2.0)
+                        person_count = len(last_pose_result.poses)
+                    face_count = 0
+                    if last_face_result is not None:
+                        from .face.recognizer import draw_faces
+                        draw_faces(canvas, last_face_result,
+                                   threshold=args.threshold)
+                        face_count = len(last_face_result.faces)
+                    latency = 0.0
+                    if pose_worker is not None:
+                        latency = pose_worker.stats.avg_latency
+                    elif face_worker is not None:
+                        latency = face_worker.stats.avg_latency
+                    elapsed = time.perf_counter() - start_time
+                    smoothed = (elapsed if smoothed == 0
+                                else 0.9 * smoothed + 0.1 * elapsed)
+                    hud = [f"FPS {1.0 / max(smoothed, 1e-6):5.1f}",
+                           f"person {person_count}"]
+                    if recognizer is not None:
+                        hud.append(f"face {face_count}")
+                    hud.append(f"{inference}/{backend} async {latency * 1000:.0f}ms")
+                    draw_hud(canvas, hud)
+                    if viewer is not None:
+                        viewer.show(_scale_for_display(canvas, display_scale)
+                                    if display_scale != 1.0 else canvas)
                         if hasattr(viewer, "poll_events") and not viewer.poll_events():
                             break
                     if recorder is not None and recorder.stdin is not None:
@@ -718,6 +806,9 @@ def command_camera(args) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
     finally:
+        for worker in (locals().get("pose_worker"), locals().get("face_worker")):
+            if worker is not None:
+                worker.close()
         if executor is not None:
             executor.shutdown(wait=False)
         if viewer is not None:

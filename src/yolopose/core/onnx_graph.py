@@ -303,14 +303,31 @@ def _decode_tensor(raw: bytes, model_dir: str, external_files: Dict[str, bytes])
                 doubles.extend(struct.unpack(f"<{len(value) // 8}d", bytes(value)))
             else:
                 doubles.append(struct.unpack("<d", value)[0])
+        # int32_data carries int32/uint16/int16/int8/uint8/bool/float16 values.
+        # For the sub-32-bit types it is a packed *byte* buffer, so the element
+        # width must come from the tensor's element type rather than from a
+        # hard-coded 4 bytes.
+        element_width = {2: 1, 3: 1, 4: 2, 5: 2, 6: 4, 9: 1, 10: 2, 12: 4}.get(
+            elem_type, 4)
         ints32: List[int] = []
         for wire, value in grouped.get(5, []):
-            if wire == WIRE_LEN:
-                ints32.extend(struct.unpack(f"<{len(value) // 4}i", bytes(value)))
-            else:
+            raw = bytes(value) if wire == WIRE_LEN else value
+            if wire != WIRE_LEN:
                 ints32.append(struct.unpack("<i", value)[0])
-        # int64_data is a packed repeated varint field: apply two's complement
-        # so negative constants (Slice bounds, axis indices) survive.
+                continue
+            if not raw:
+                continue
+            if element_width == 1:
+                ints32.extend(np.frombuffer(raw, dtype=np.int8).tolist()
+                              if elem_type == 3 else raw)
+            elif element_width == 2:
+                dtype = "<u2" if elem_type == 4 else "<i2"
+                ints32.extend(np.frombuffer(raw, dtype=dtype).tolist())
+            else:
+                usable = len(raw) - (len(raw) % 4)
+                if usable:
+                    ints32.extend(struct.unpack(f"<{usable // 4}i", raw[:usable]))
+
         ints64 = [as_signed64(v) for v in repeated_varints(grouped, 7)]
         uints64 = repeated_varints(grouped, 11)
 
