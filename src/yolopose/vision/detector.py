@@ -101,6 +101,23 @@ class _OnnxRuntimeEngine:
     def input_name(self) -> str:
         return self.session.get_inputs()[0].name
 
+    @property
+    def input_shape(self):
+        """Static NCHW input shape, or ``None`` when the axes are dynamic."""
+        try:
+            shape = list(self.session.get_inputs()[0].shape)
+        except Exception:
+            return None
+        normalised = []
+        for dim in shape:
+            if isinstance(dim, int):
+                normalised.append(dim)
+            elif isinstance(dim, str) and dim.isdigit():
+                normalised.append(int(dim))
+            else:
+                normalised.append(None)
+        return tuple(normalised) if normalised else None
+
     def run(self, feeds, profile: bool = False):
         return {o.name: v for o, v in zip(self.session.get_outputs(),
                                           self.session.run(None, feeds))}
@@ -175,11 +192,19 @@ class Detector:
         self.backend_name = ""
         self.engine = self._build_engine(backend, threads, fuse, provider)
 
+        # The model's own static input shape always wins: a converted model
+        # (e.g. 320x320) must not be fed 640x640 frames.
         shape = getattr(self.engine, "input_shape", None)
-        if shape and len(shape) == 4 and all(isinstance(d, int) for d in shape[2:]):
-            height, width = int(shape[2]), int(shape[3])
-            if height > 0 and width > 0:
-                self.image_size = (width, height)
+        if shape and len(shape) == 4:
+            height, width = shape[2], shape[3]
+            if isinstance(height, int) and isinstance(width, int) \
+                    and height > 0 and width > 0:
+                self.image_size = (int(width), int(height))
+            else:
+                # Dynamic spatial axes: fall back to what the caller asked for.
+                self.image_size = tuple(int(v) for v in image_size)
+        else:
+            self.image_size = tuple(int(v) for v in image_size)
 
         self.num_keypoints = 17
 

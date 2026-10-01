@@ -135,23 +135,33 @@ def search_paths() -> List[str]:
     return [p for p in dict.fromkeys(paths) if p]
 
 
+# Locally converted input-resolution variants of the default pose model.
+SIZE_VARIANTS = (512, 416, 320, 256)
+
+
+def _candidate_filenames(name: Optional[str]) -> List[str]:
+    """Filenames to look for, including converted size variants."""
+    if name:
+        base = os.path.splitext(name)[0]
+        spec = _all_specs().get(name) or _all_specs().get(base)
+        names = [spec.filename] if spec else [name]
+        if not os.path.splitext(name)[1]:
+            names.append(name + ".onnx")
+        return list(dict.fromkeys(names))
+    names = [MODELS[DEFAULT_MODEL].filename]
+    names += [m.filename for m in _all_specs().values()]
+    names += [f"yolov8n-pose-{size}.onnx" for size in SIZE_VARIANTS]
+    names.append("yolov8n-pose-fast.onnx")
+    return list(dict.fromkeys(names))
+
+
 def find_model(name: Optional[str] = None) -> Optional[str]:
     """Return the path of a usable model, or ``None``."""
     override = os.environ.get("YOLO_POSE_MODEL")
     if override and os.path.exists(override):
         return os.path.abspath(override)
 
-    if name:
-        if os.path.exists(name):
-            return os.path.abspath(name)
-        specs = _all_specs()
-        spec = specs.get(name) or specs.get(os.path.splitext(name)[0])
-        candidates = [spec.filename] if spec else [name]
-        if not os.path.splitext(name)[1]:
-            candidates.append(name + ".onnx")
-    else:
-        spec = MODELS[DEFAULT_MODEL]
-        candidates = [spec.filename] + [m.filename for m in _all_specs().values()]
+    candidates = _candidate_filenames(name)
 
     for directory in search_paths():
         for candidate in dict.fromkeys(candidates):

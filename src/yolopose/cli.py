@@ -87,6 +87,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_cam.add_argument("--width", type=int, default=640)
     p_cam.add_argument("--height", type=int, default=480)
     p_cam.add_argument("--fps", type=int, default=30)
+    p_cam.add_argument("--profile", default="accurate",
+                       choices=["accurate", "balanced", "fast", "turbo"],
+                       help="pose model resolution preset: accurate=640, "
+                            "balanced=416, fast=320 (2.3x faster), turbo=256")
     p_cam.add_argument("--scale", type=float, default=0.0,
                        help="enlarge the preview window by this factor "
                             "(default: auto — fits your screen)")
@@ -245,6 +249,31 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# Pose input-resolution presets.  Speeds measured on the reference machine for
+# the full detect() call; accuracy loss is relative to the 640 model.
+POSE_PROFILES = {
+    "accurate": (640, "baseline accuracy"),
+    "balanced": (416, "~1.4x faster, accurate"),
+    "fast": (320, "~2.3x faster, main people still detected"),
+    "turbo": (256, "~3.4x faster, noticeably less precise"),
+}
+
+
+def _profile_model(requested: Optional[str], profile: str) -> Optional[str]:
+    """Map a profile name onto a converted model, when one is installed.
+
+    Falls back to the caller's model (or the default) when the sized variant is
+    not present, so the presets never break a working setup.
+    """
+    if requested:
+        return requested
+    if not profile or profile == "accurate":
+        return None
+    size = POSE_PROFILES.get(profile, (640, ""))[0]
+    candidate = find_model(f"yolov8n-pose-{size}")
+    return candidate or None
+
+
 def _resolve_model(requested: Optional[str]) -> str:
     path = find_model(requested)
     if path is None:
@@ -256,7 +285,9 @@ def _resolve_model(requested: Optional[str]) -> str:
 
 
 def _make_detector(args) -> Detector:
-    model_path = _resolve_model(getattr(args, "model", None))
+    requested = getattr(args, "model", None)
+    profile = getattr(args, "profile", "accurate")
+    model_path = _resolve_model(_profile_model(requested, profile) or requested)
     return Detector(
         model_path,
         backend=getattr(args, "backend", "auto"),
