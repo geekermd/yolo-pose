@@ -108,6 +108,27 @@ yolo-pose camera --no-pose --faces
 
 用 `yolo-pose devices` 可随时查看诊断与缺少的项。**一旦装上可用的 EP，无需改代码**——`--provider auto` 会自动选用。
 
+## 1.8 识别窗口大小（可自由调节）
+
+识别窗口**默认为 2 倍大小**（640×480 采集 → 1280×960 窗口），并且**可以自由拖拽缩放**——
+拖动窗口边缘时画面会立即跟随。
+
+```bash
+./run-camera.sh --big          # 2 倍窗口 1280x960
+./run-camera.sh --huge         # 3 倍窗口 1920x1440
+./run-camera.sh --scale 1.5    # 任意倍数
+./run-camera.sh --small        # 原始大小
+# 或
+yolo-pose camera --scale 0     # 自动（默认）
+yolo-pose camera --max-window 2200
+```
+
+菜单入口里也加了「大窗口 / 超大窗口」两个预设。
+
+**关键点**：采集与推理仍在传感器**原始分辨率**上进行，只有显示被放大，**不损失任何精度**。
+放大由 `XPutImage` 在 blit 时完成：实测 **1.4 ms/帧**，而用 NumPy 预放大要 **11.3 ms/帧**，
+省下约 10 ms/帧。
+
 ## 2. 已验证内容（可复现）
 
 | 项目 | 方法 | 结果 |

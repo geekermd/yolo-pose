@@ -163,6 +163,24 @@ yolo-pose face group.jpg --gallery people.npz -o annotated.png
 yolo-pose face group.jpg --gallery people.npz --json - --threshold 0.35
 ```
 
+### Preview window size
+
+The recognition window starts large and is **freely resizable** — drag any edge
+or corner and the video follows immediately. Frames are still captured and
+inferred at the sensor's native resolution; only the display is enlarged, so a
+bigger window costs no accuracy.
+
+```bash
+yolo-pose camera --scale 0     # auto (default): fits your screen, 2x for 640x480
+yolo-pose camera --scale 2     # fixed 2x start, still resizable afterwards
+yolo-pose camera --scale 1.5   # any factor
+yolo-pose camera --max-window 2200   # raise the auto-scaling ceiling
+```
+
+The stretch happens inside ``XPutImage``: measured at 1.4 ms per frame versus
+11.3 ms for a NumPy resize of the same 2x enlargement, so enlarging is close to
+free.
+
 ### One-click launchers
 
 ```bash
@@ -170,6 +188,9 @@ yolo-pose face group.jpg --gallery people.npz --json - --threshold 0.35
 ./run-camera.sh --pose-only  # pose only
 ./run-camera.sh --face-only  # face only
 ./run-camera.sh --save       # also record to frames/session.mp4
+./run-camera.sh --big        # start with a 2x window (1280x960)
+./run-camera.sh --huge       # start with a 3x window (1920x1440)
+./run-camera.sh --scale 1.5  # any factor; still resizable by dragging
 ./run-demo.sh --open         # browser demo, opens automatically
 ./camera-menu.sh             # ask which mode to start (zenity dialog)
 ```

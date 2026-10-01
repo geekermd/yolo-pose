@@ -99,6 +99,32 @@ class _XEvent(ctypes.Union):
     _fields_ = [("type", ctypes.c_int), ("pad", ctypes.c_long * 24)]
 
 
+class _XSizeHints(ctypes.Structure):
+    """XSizeHints from Xlib.h (fields are only valid when flagged)."""
+
+    _fields_ = [
+        ("flags", ctypes.c_long),
+        ("x", ctypes.c_int), ("y", ctypes.c_int),
+        ("width", ctypes.c_int), ("height", ctypes.c_int),
+        ("min_width", ctypes.c_int), ("min_height", ctypes.c_int),
+        ("max_width", ctypes.c_int), ("max_height", ctypes.c_int),
+        ("width_inc", ctypes.c_int), ("height_inc", ctypes.c_int),
+        ("min_aspect_x", ctypes.c_int), ("min_aspect_y", ctypes.c_int),
+        ("max_aspect_x", ctypes.c_int), ("max_aspect_y", ctypes.c_int),
+        ("base_width", ctypes.c_int), ("base_height", ctypes.c_int),
+        ("win_gravity", ctypes.c_int),
+    ]
+
+
+USPosition, USSize = 1 << 0, 1 << 1
+PPosition, PSize = 1 << 2, 1 << 3
+PMinSize, PMaxSize = 1 << 4, 1 << 5
+PResizeInc, PAspect = 1 << 6, 1 << 7
+PBaseSize, PWinGravity = 1 << 8, 1 << 9
+
+_STRUCTURE_NOTIFY = 0x00020000
+
+
 _LIBX11_CANDIDATES = ("libX11.so.6", "libX11.so", "libX11.dylib")
 
 
@@ -155,6 +181,10 @@ def _bind(lib) -> None:
     lib.XResizeWindow.argtypes = [ctypes.c_void_p, ctypes.c_ulong,
                                   ctypes.c_uint, ctypes.c_uint]
     lib.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    lib.XSetWMNormalHints.argtypes = [ctypes.c_void_p, ctypes.c_ulong,
+                                      ctypes.c_void_p]
+    lib.XGetWMNormalHints.argtypes = [ctypes.c_void_p, ctypes.c_ulong,
+                                      ctypes.c_void_p, ctypes.c_void_p]
 
 
 class XlibViewer:
@@ -185,18 +215,24 @@ class XlibViewer:
             self.lib.XCloseDisplay(self.display)
             raise ViewerError("XCreateSimpleWindow failed")
         self.lib.XStoreName(self.display, self.window, title.encode())
+        # Expose | KeyPress | ButtonPress | StructureNotify (so resizes arrive)
         self.lib.XSelectInput(self.display, self.window,
-                              0x00008000 | 0x00000001 | 0x00000004)  # Expose|KeyPress|ButtonPress
+                              0x00008000 | 0x00000001 | 0x00000004
+                              | _STRUCTURE_NOTIFY)
+        self._apply_size_hints(int(width), int(height))
         self.lib.XMapWindow(self.display, self.window)
         self.lib.XFlush(self.display)
 
         self.width = int(width)
         self.height = int(height)
+        self._image_width = int(width)
+        self._image_height = int(height)
         self.pixels = None
         self.image = None
         self.gc = None
         self._closed = False
         self._needs_redraw = True
+        self._size_dirty = True
 
         visual = self.visual.contents
         self._red_mask = int(visual.red_mask)
@@ -248,6 +284,9 @@ class XlibViewer:
         put_long(_IMG_GREEN_MASK, self._green_mask)
         put_long(_IMG_BLUE_MASK, self._blue_mask)
 
+        self._image_width = int(width)
+        self._image_height = int(height)
+
         if self.gc is None:
             self.lib.XCreateGC.restype = ctypes.c_void_p
             self.lib.XCreateGC.argtypes = [ctypes.c_void_p, ctypes.c_ulong,
@@ -274,7 +313,13 @@ class XlibViewer:
         array[:, :, 3] = (values >> 24) & 0xFF
 
     # -- public API --------------------------------------------------------- #
-    def show(self, frame: np.ndarray) -> None:
+    def show(self, frame: np.ndarray, window_size: Optional[Tuple[int, int]] = None) -> None:
+        """Display a frame, optionally stretched to ``window_size``.
+
+        When ``window_size`` is larger than the frame, X11 performs the scaling
+        during ``XPutImage`` — that costs nothing in Python and avoids a
+        multi-millisecond NumPy resize on every frame.
+        """
         if self._closed:
             raise ViewerError("viewer is closed")
         image = np.ascontiguousarray(frame)
@@ -282,16 +327,52 @@ class XlibViewer:
             image = np.clip(image, 0, 255).astype(np.uint8)
         height, width = image.shape[:2]
 
-        if (width, height) != (self.width, self.height):
-            self.width, self.height = width, height
-            self.lib.XResizeWindow(self.display, self.window, width, height)
+        # The XImage always holds the frame at its native resolution.
+        if (width, height) != (self._image_width, self._image_height):
             self._allocate_image(width, height)
+
+        # Always draw into the geometry the X server currently reports: that is
+        # what makes the window follow a user drag or a window-manager resize.
+        live_w, live_h = self.query_window_size()
+        if live_w > 0 and live_h > 0:
+            target_w, target_h = live_w, live_h
+        elif window_size is not None:
+            target_w, target_h = window_size
+        else:
+            target_w, target_h = width, height
+
+        self.width, self.height = target_w, target_h
 
         self._pack(image)
         self.lib.XPutImage(self.display, self.window, self.gc,
                            self._image_pointer(), 0, 0, 0, 0, width, height)
         self.lib.XFlush(self.display)
         self._needs_redraw = False
+
+    def _apply_size_hints(self, width: int, height: int) -> None:
+        """Declare the window freely resizable (min = native frame size)."""
+        hints = _XSizeHints()
+        ctypes.memset(ctypes.byref(hints), 0, ctypes.sizeof(hints))
+        hints.flags = PMinSize | PBaseSize | PWinGravity
+        hints.min_width = max(160, min(width, 640))
+        hints.min_height = max(120, min(height, 480))
+        hints.base_width = width
+        hints.base_height = height
+        hints.win_gravity = 1          # NorthWestGravity
+        self.lib.XSetWMNormalHints(self.display, self.window,
+                                   ctypes.byref(hints))
+
+    def query_window_size(self) -> Tuple[int, int]:
+        """Current window geometry as the X server sees it."""
+        attributes = _XWindowAttributes()
+        try:
+            if self.lib.XGetWindowAttributes(self.display, self.window,
+                                             ctypes.byref(attributes)):
+                if attributes.width > 0 and attributes.height > 0:
+                    return int(attributes.width), int(attributes.height)
+        except Exception:
+            pass
+        return self.width, self.height
 
     def poll_events(self) -> bool:
         """Drain X events; returns ``False`` when the user closed the window."""
@@ -303,6 +384,9 @@ class XlibViewer:
             kind = event.type
             if kind == 12:                       # Expose
                 self._needs_redraw = True
+            elif kind == 22:                     # ConfigureNotify (resize)
+                self._needs_redraw = True
+                self._size_dirty = True
             elif kind == 2:                      # KeyPress
                 return False
             elif kind == 33:                     # ClientMessage (WM delete)

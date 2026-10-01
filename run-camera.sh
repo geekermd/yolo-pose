@@ -7,6 +7,9 @@
 #   ./run-camera.sh --save          # also write annotated frames to ./frames
 #   ./run-camera.sh --device 1      # pick another camera
 #   ./run-camera.sh --list          # show capture devices and exit
+#   ./run-camera.sh --big           # 2x preview window (1280x960 from a 640x480 sensor)
+#   ./run-camera.sh --huge          # 3x preview window
+#   ./run-camera.sh --scale 1.5     # any factor you like (window stays resizable)
 #
 # It works both from a source checkout (adds src/ to PYTHONPATH) and from an
 # installed copy (uses the `yolo-pose` command).
@@ -34,6 +37,10 @@ while [[ $# -gt 0 ]]; do
             exit $?
             ;;
         --device) DEVICE="$2"; shift 2 ;;
+        --scale) EXTRA+=(--scale "$2"); shift 2 ;;
+        --big) EXTRA+=(--scale 2); shift ;;
+        --huge) EXTRA+=(--scale 3); shift ;;
+        --small) EXTRA+=(--scale 1); shift ;;
         --gallery) GALLERY="$2"; shift 2 ;;
         -h|--help) sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) EXTRA+=("$1"); shift ;;
@@ -126,6 +133,7 @@ if [[ "$SAVE" -eq 1 ]]; then
     echo "recording annotated frames to $HERE/frames/session.mp4"
 fi
 
+echo "提示：窗口可自由拖拽缩放；按 q 或 Esc 关闭"
 echo "starting live recognition — press q or Esc in the window, or Ctrl-C here"
 echo
 
