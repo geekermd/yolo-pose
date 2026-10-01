@@ -1,0 +1,45 @@
+yolo-pose — third-party notices
+================================
+
+The MIT licence in LICENSE covers the *source code* of this project only.
+Pretrained model weights are third-party works distributed under their own
+licences and are NOT covered by the MIT licence.
+
+This repository does not contain any model weights. `yolo-pose models pull`
+downloads them at the user's request from their upstream distributors.
+
+1. YOLOv8-pose weights (yolov8n-pose.onnx, yolov8s-pose.onnx, yolov8m-pose.onnx)
+   ---------------------------------------------------------------------------
+   Upstream : Ultralytics — https://github.com/ultralytics/ultralytics
+   Licence  : AGPL-3.0 (https://www.gnu.org/licenses/agpl-3.0.html)
+
+   AGPL-3.0 is a strong copyleft licence. If you distribute a product that
+   includes these weights, or offer it as a network service, you must comply
+   with the AGPL. Ultralytics also sells a commercial licence for use cases
+   that cannot meet the AGPL terms.
+
+   The pose model in this repository is fetched from the community mirror
+   `Xenova/yolov8n-pose` / `Xenova/yolov8-pose-onnx` on Hugging Face, which
+   redistribute the Ultralytics ONNX exports.
+
+2. InsightFace models (scrfd_500m.onnx, w600k_mbf.onnx)
+   ----------------------------------------------------
+   Upstream : InsightFace — https://github.com/deepinsight/insightface
+   Licence  : The InsightFace *code* is MIT. The published pretrained models
+              are stated by the project to be for **non-commercial research
+              purposes only**. Review the upstream model zoo terms before any
+              commercial deployment.
+
+   Files are fetched from the `deepghs/insightface` Hugging Face mirror
+   (buffalo_s pack).
+
+3. Runtime dependencies
+   ---------------------
+   NumPy            — BSD-3-Clause
+   Pillow           — MIT-CMU (optional)
+   ONNX Runtime     — MIT (optional)
+   ffmpeg           — LGPL/GPL depending on build (optional, CLI `--record`)
+
+No third-party source code is vendored into this project. The ONNX parser,
+operator kernels, JPEG decoder, V4L2 driver and X11 client are original
+implementations.

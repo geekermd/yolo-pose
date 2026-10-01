@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=yolo-pose Demo
+Name[zh_CN]=yolo-pose 浏览器演示
+Comment=Local browser demo - drag in a photo, no camera needed
+Comment[zh_CN]=本地浏览器演示（拖入图片即可，不需要摄像头）
+Exec=/home/md/桌面/yolo-pose/launchers/run-demo-gui.sh
+Path=/home/md/桌面/yolo-pose
+Icon=web-browser
+Terminal=true
+Categories=Science
+Keywords=pose;keypoints;face;yolo;onnx;demo
+StartupNotify=true

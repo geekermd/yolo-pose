@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+models/*.onnx
+!models/README.md
+*.deb
+debian/yolo-pose/
+frames/
+*.npy

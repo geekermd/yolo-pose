@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=yolo-pose
+Name[zh_CN]=yolo-pose 实时识别
+Comment=Choose pose recognition, face recognition, both, or the browser demo
+Comment[zh_CN]=选择：实时姿态识别 / 实时人脸识别 / 两者同时 / 浏览器演示
+Exec=/home/md/桌面/yolo-pose/launchers/run-menu.sh
+Path=/home/md/桌面/yolo-pose
+Icon=camera-web
+Terminal=true
+Categories=Science
+Keywords=pose;keypoints;face;yolo;onnx;demo
+StartupNotify=true

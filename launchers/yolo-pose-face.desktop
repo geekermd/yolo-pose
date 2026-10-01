@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=yolo-pose Face
+Name[zh_CN]=yolo-pose 人脸识别
+Comment=Live face detection and identity recognition
+Comment[zh_CN]=实时人脸检测与身份识别
+Exec=/home/md/桌面/yolo-pose/launchers/run-face.sh
+Path=/home/md/桌面/yolo-pose
+Icon=face-smile
+Terminal=true
+Categories=Science
+Keywords=pose;keypoints;face;yolo;onnx;demo
+StartupNotify=true

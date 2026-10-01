@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: tests (python ${{ matrix.python }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.9", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Test extras: the reference implementation is only used for parity checks.
+          pip install numpy pytest pillow onnx onnxruntime
+
+      - name: Fetch models (cached)
+        uses: actions/cache@v4
+        id: model-cache
+        with:
+          path: models/*.onnx
+          key: models-v1-${{ runner.os }}
+
+      - name: Download models
+        run: |
+          mkdir -p models
+          # Hugging Face mirror first, then the canonical host.
+          for base in https://hf-mirror.com https://huggingface.co; do
+            curl -fsSL "$base/Xenova/yolov8n-pose/resolve/main/onnx/model.onnx" \
+              -o models/yolov8n-pose.onnx && break || true
+          done
+          curl -fsSL "https://hf-mirror.com/deepghs/insightface/resolve/main/buffalo_s/det_500m.onnx" \
+            -o models/scrfd_500m.onnx || true
+          curl -fsSL "https://hf-mirror.com/deepghs/insightface/resolve/main/buffalo_s/w600k_mbf.onnx" \
+            -o models/w600k_mbf.onnx || true
+          ls -la models/
+
+      - name: Run unit tests
+        run: python -m pytest tests/ -v
+
+      - name: Verify ONNX Runtime parity (layer by layer)
+        if: hashFiles('models/yolov8n-pose.onnx') != ''
+        run: python tools/compare_intermediates.py
+
+      - name: CLI self test
+        run: |
+          pip install -e .
+          yolo-pose selftest
+
+  package:
+    name: build .deb
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch the default pose model
+        run: |
+          mkdir -p models
+          curl -fsSL "https://hf-mirror.com/Xenova/yolov8n-pose/resolve/main/onnx/model.onnx" \
+            -o models/yolov8n-pose.onnx
+
+      - name: Build arch-independent package
+        run: ./debian/build-deb.sh --out dist
+
+      - name: Build native amd64 package
+        run: ./debian/build-deb.sh --arch amd64 --out dist
+
+      - name: Build arm64 package
+        run: ./debian/build-deb.sh --arch arm64 --out dist
+
+      - name: Inspect packages
+        run: |
+          for deb in dist/*.deb; do
+            echo "== $deb"
+            dpkg-deb --info "$deb" | head -12
+          done
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-packages
+          path: dist/*.deb

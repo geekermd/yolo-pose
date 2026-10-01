@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=yolo-pose Pose
+Name[zh_CN]=yolo-pose 人体姿态识别
+Comment=Live 17-keypoint pose estimation with joint angles
+Comment[zh_CN]=实时人体姿态识别（17 关节 + 骨架 + 关节角度）
+Exec=/home/md/桌面/yolo-pose/launchers/run-pose.sh
+Path=/home/md/桌面/yolo-pose
+Icon=preferences-desktop-accessibility
+Terminal=true
+Categories=Science
+Keywords=pose;keypoints;face;yolo;onnx;demo
+StartupNotify=true

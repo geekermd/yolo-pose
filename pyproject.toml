@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yolo-pose"
+version = "1.0.0"
+description = "Human joint (pose) recognition with YOLO on a dependency-free NumPy ONNX runtime"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "geekmd" }]
+keywords = ["yolo", "pose-estimation", "keypoints", "onnx", "numpy", "arm64", "v4l2"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Image Recognition",
+]
+dependencies = ["numpy>=1.20"]
+
+[project.optional-dependencies]
+# Pillow is recommended (better JPEG/PNG support) but never required.
+fast = ["onnxruntime>=1.16"]
+pil = ["pillow>=9.0"]
+dev = ["pytest>=7.0", "onnx>=1.16", "onnxruntime>=1.16", "pillow>=9.0"]
+
+[project.urls]
+Homepage = "https://github.com/geekmd/yolo-pose"
+Repository = "https://github.com/geekmd/yolo-pose"
+Issues = "https://github.com/geekmd/yolo-pose/issues"
+
+[project.scripts]
+yolo-pose = "yolopose.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,25 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile all sources
+        run: python -m compileall -q src tools tests
+      - name: Check for accidental binary blobs
+        run: |
+          if git ls-files | grep -qE '\.(onnx|pt|pth|deb|so|whl)$'; then
+            echo "::error::model/binary files must not be committed"
+            git ls-files | grep -E '\.(onnx|pt|pth|deb|so|whl)$'
+            exit 1
+          fi
+          echo "no binary blobs tracked"

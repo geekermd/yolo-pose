@@ -1,0 +1,10 @@
+yolo-pose (1.0.0) unstable; urgency=medium
+
+  * Initial release.
+  * Dependency-free NumPy ONNX runtime (parser + 60 operator kernels).
+  * YOLOv8/YOLO11 pose detection with COCO-17 keypoints and joint angles.
+  * Face detection (SCRFD), alignment and identity matching (MobileFaceNet).
+  * V4L2 camera capture and X11 live preview.
+  * Debian packaging for architecture-independent and native arm64/amd64 builds.
+
+ -- geekmd <geekmd@localhost>  Wed, 01 Oct 2026 12:00:00 +0800

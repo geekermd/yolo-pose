@@ -1,0 +1,55 @@
+#!/usr/bin/make -f
+# Minimal dh rules: this is an arch-independent Python package plus data files.
+
+%:
+	dh $@
+
+override_dh_auto_BUILD:
+	# Nothing to compile: the package is pure Python.
+	@true
+
+override_dh_auto_TEST:
+	# Tests run from the source tree; keep package builds fast and offline-safe.
+	# Use `python3 -m pytest tests/` in a checkout instead.
+	@true
+
+override_dh_auto_INSTALL:
+	install -d $(CURDIR)/debian/yolo-pose/usr/lib/python3/dist-packages
+	cp -r src/yolopose $(CURDIR)/debian/yolo-pose/usr/lib/python3/dist-packages/
+	find $(CURDIR)/debian/yolo-pose/usr/lib/python3/dist-packages -name '__pycache__' -type d -prune -exec rm -rf {} +
+	find $(CURDIR)/debian/yolo-pose/usr/lib/python3/dist-packages -name '*.pyc' -delete
+
+	install -d $(CURDIR)/debian/yolo-pose/usr/bin
+	printf '%s\n' '#!/usr/bin/python3' \
+	  'import sys' \
+	  'from yolopose.cli import main' \
+	  'sys.exit(main())' \
+	  > $(CURDIR)/debian/yolo-pose/usr/bin/yolo-pose
+	chmod 0755 $(CURDIR)/debian/yolo-pose/usr/bin/yolo-pose
+
+	# Ship the default pose model so the package works without network access.
+	install -d $(CURDIR)/debian/yolo-pose/usr/share/yolo-pose/models
+	if [ -f models/yolov8n-pose.onnx ]; then \
+	  install -m 0644 models/yolov8n-pose.onnx \
+	    $(CURDIR)/debian/yolo-pose/usr/share/yolo-pose/models/; \
+	fi
+
+	install -d $(CURDIR)/debian/yolo-pose/usr/share/doc/yolo-pose
+	install -m 0644 README.md NOTICE CHANGELOG.md \
+	  $(CURDIR)/debian/yolo-pose/usr/share/doc/yolo-pose/
+	install -m 0644 debian/copyright \
+	  $(CURDIR)/debian/yolo-pose/usr/share/doc/yolo-pose/copyright
+	install -m 0644 LICENSE \
+	  $(CURDIR)/debian/yolo-pose/usr/share/doc/yolo-pose/LICENSE
+	gzip -9n -c debian/changelog \
+	  > $(CURDIR)/debian/yolo-pose/usr/share/doc/yolo-pose/changelog.Debian.gz
+
+override_dh_auto_CLEAN:
+	rm -rf $(CURDIR)/debian/yolo-pose
+	dh_auto_clean || true
+
+override_dh_installdocs:
+	@true
+
+override_dh_installchangelogs:
+	@true
