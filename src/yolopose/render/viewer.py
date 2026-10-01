@@ -191,7 +191,7 @@ class XlibViewer:
     """Displays frames in an X11 window through libX11 (ctypes)."""
 
     def __init__(self, width: int, height: int, title: str = "yolo-pose",
-                 display: Optional[str] = None):
+                 display: Optional[str] = None, resizable: bool = True):
         self.lib = _load_libx11()
         if self.lib is None:
             raise ViewerError("libX11 could not be loaded")
@@ -219,7 +219,8 @@ class XlibViewer:
         self.lib.XSelectInput(self.display, self.window,
                               0x00008000 | 0x00000001 | 0x00000004
                               | _STRUCTURE_NOTIFY)
-        self._apply_size_hints(int(width), int(height))
+        self.resizable = bool(resizable)
+        self._apply_size_hints(int(width), int(height), self.resizable)
         self.lib.XMapWindow(self.display, self.window)
         self.lib.XFlush(self.display)
 
@@ -331,17 +332,15 @@ class XlibViewer:
         if (width, height) != (self._image_width, self._image_height):
             self._allocate_image(width, height)
 
-        # Always draw into the geometry the X server currently reports: that is
-        # what makes the window follow a user drag or a window-manager resize.
-        live_w, live_h = self.query_window_size()
-        if live_w > 0 and live_h > 0:
-            target_w, target_h = live_w, live_h
-        elif window_size is not None:
-            target_w, target_h = window_size
-        else:
-            target_w, target_h = width, height
+        if self.resizable:
+            # Follow whatever geometry the X server reports so a user drag or a
+            # window-manager resize is honoured immediately.
+            live_w, live_h = self.query_window_size()
+            target_w, target_h = ((live_w, live_h) if live_w > 0 and live_h > 0
+                                  else (window_size or (width, height)))
+            self.width, self.height = target_w, target_h
+        # In locked mode the geometry never changes, so draw at the fixed size.
 
-        self.width, self.height = target_w, target_h
 
         self._pack(image)
         self.lib.XPutImage(self.display, self.window, self.gc,
@@ -349,16 +348,29 @@ class XlibViewer:
         self.lib.XFlush(self.display)
         self._needs_redraw = False
 
-    def _apply_size_hints(self, width: int, height: int) -> None:
-        """Declare the window freely resizable (min = native frame size)."""
+    def _apply_size_hints(self, width: int, height: int,
+                          resizable: bool = True) -> None:
+        """Tell the window manager whether the window may be resized.
+
+        ``resizable=False`` sets min == max, which is how a window asks to have
+        no resize handles at all — the geometry then stays exactly as requested.
+        """
         hints = _XSizeHints()
         ctypes.memset(ctypes.byref(hints), 0, ctypes.sizeof(hints))
-        hints.flags = PMinSize | PBaseSize | PWinGravity
-        hints.min_width = max(160, min(width, 640))
-        hints.min_height = max(120, min(height, 480))
-        hints.base_width = width
-        hints.base_height = height
+        hints.x = 0
+        hints.y = 0
         hints.win_gravity = 1          # NorthWestGravity
+        if resizable:
+            hints.flags = PMinSize | PBaseSize | PWinGravity
+            hints.min_width = max(160, min(width, 640))
+            hints.min_height = max(120, min(height, 480))
+        else:
+            hints.flags = (USPosition | USSize | PPosition | PSize
+                           | PMinSize | PMaxSize | PBaseSize | PWinGravity)
+            hints.min_width = hints.max_width = int(width)
+            hints.min_height = hints.max_height = int(height)
+        hints.base_width = int(width)
+        hints.base_height = int(height)
         self.lib.XSetWMNormalHints(self.display, self.window,
                                    ctypes.byref(hints))
 
@@ -446,11 +458,13 @@ class HeadlessWriter:
 
 def open_viewer(width: int, height: int, title: str = "yolo-pose",
                 headless_dir: Optional[str] = None,
-                display: Optional[str] = None) -> Tuple[object, str]:
+                display: Optional[str] = None,
+                resizable: bool = True) -> Tuple[object, str]:
     """Return ``(viewer, backend_name)`` choosing the best backend available."""
     problems = []
     try:
-        return XlibViewer(width, height, title, display=display), "xlib"
+        return XlibViewer(width, height, title, display=display,
+                          resizable=resizable), "xlib"
     except Exception as exc:
         problems.append(f"xlib: {exc}")
 

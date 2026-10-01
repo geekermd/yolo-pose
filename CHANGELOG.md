@@ -12,10 +12,15 @@ First release.
   loudly rather than silently degrading to the CPU.
 - `yolo-pose camera --pose` / `--no-pose`: pick the pose pass, the face pass, or
   both, instead of always running both.
-- Preview window sizing: `--scale` (auto by default, 2x for a 640x480 sensor),
-  `--max-window`, plus `--big`/`--huge` shortcuts on the launcher. The window is
-  freely resizable and the video follows the drag; the enlargement happens inside
-  `XPutImage` (1.4 ms/frame) rather than in NumPy (11.3 ms/frame).
+- Preview window: large by default (2x) and **locked** so the geometry stays
+  fixed; `--scale`, `--max-window`, `--resizable`, plus `--big`/`--huge` shortcuts.
+  Enlargement happens inside `XPutImage` (1.4 ms/frame) not in NumPy (11.3 ms).
+- `--detect-every N` decouples display rate from inference rate by redrawing the
+  previous detections on skipped frames.
+- `--capture-format` to force YUYV/MJPG (MJPG sustains 30 FPS at 1280x720 where
+  YUYV falls to ~9 FPS on USB 2.0 bandwidth).
+- Frame-rate work: ONNX Runtime threads capped at 8 after a sweep (30.5 ms/frame
+  versus 59.6 ms with 20 threads); pose-only reaches the camera's 30 FPS ceiling.
 - Dependency-free ONNX parser (protobuf wire format) and NumPy execution engine.
 - 60+ operator kernels including Conv/ConvTranspose, MaxPool/AveragePool, Resize,
   GridSample, AffineGrid, BatchNormalization, LRN, and the full elementwise set.

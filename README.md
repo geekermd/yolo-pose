@@ -163,23 +163,45 @@ yolo-pose face group.jpg --gallery people.npz -o annotated.png
 yolo-pose face group.jpg --gallery people.npz --json - --threshold 0.35
 ```
 
-### Preview window size
+### Preview window size and frame rate
 
-The recognition window starts large and is **freely resizable** — drag any edge
-or corner and the video follows immediately. Frames are still captured and
-inferred at the sensor's native resolution; only the display is enlarged, so a
-bigger window costs no accuracy.
+The recognition window opens **large and locked**: 2x by default, so a 640x480
+sensor fills a 1280x960 window. It stays that size unless you ask otherwise.
+Frames are still captured and inferred at the sensor's native resolution — only
+the display is enlarged, so a big window costs no accuracy.
 
 ```bash
-yolo-pose camera --scale 0     # auto (default): fits your screen, 2x for 640x480
-yolo-pose camera --scale 2     # fixed 2x start, still resizable afterwards
-yolo-pose camera --scale 1.5   # any factor
-yolo-pose camera --max-window 2200   # raise the auto-scaling ceiling
+yolo-pose camera --scale 0        # auto (default): fits the screen, 2x for 640x480
+yolo-pose camera --scale 3        # 3x -> 1920x1440
+yolo-pose camera --scale 1.5      # any factor
+yolo-pose camera --resizable      # allow dragging the window edges
+yolo-pose camera --max-window 2200
 ```
 
-The stretch happens inside ``XPutImage``: measured at 1.4 ms per frame versus
-11.3 ms for a NumPy resize of the same 2x enlargement, so enlarging is close to
-free.
+The stretch happens inside ``XPutImage``: **1.4 ms/frame** versus 11.3 ms for a
+NumPy resize of the same enlargement.
+
+#### Making it faster
+
+Measured on the reference machine (AMD Ryzen AI 9 H 365, 20 threads, 640x480):
+
+| Configuration | Per frame | Frame rate |
+|---|---|---|
+| Pose only | 33.6 ms | **29.7 FPS** (the camera's own limit) |
+| Pose + face | 53.6 ms | 18.7 FPS |
+| Pose + face, `--detect-every 3` | — | display keeps up, overlay updated every 3rd frame |
+
+* **Thread count matters more than anything else.** ONNX Runtime's default used
+  only a few of 20 threads (53 ms/frame for pose alone). A sweep showed 8 threads
+  optimal (30.5 ms), with 20 threads *worse* (59.6 ms). The default is now capped
+  at 8.
+* **Smallest model wins.** Quantised variants gave little: fp16 26.0 ms vs fp32
+  28.1 ms, q4 29.2 ms, and int8 does not load (needs quantised operators the NumPy
+  engine does not implement).
+* `--detect-every N` runs inference every Nth frame and redraws the previous
+  detections on the frames in between, so the display stays smooth.
+* Pose alone reaches the camera's 30 FPS ceiling; adding the face pipeline costs
+  about 20 ms, so use `--pose` when only joints are needed.
 
 ### One-click launchers
 
@@ -331,7 +353,7 @@ Model downloads default to the `hf-mirror.com` mirror and fall back to
 ## Building and testing
 
 ```bash
-python -m pytest tests/ -q          # 99 tests, <1 s
+python -m pytest tests/ -q          # 98 tests, <1 s
 yolo-pose selftest                  # end-to-end check on your machine
 python tools/compare_intermediates.py   # layer-by-layer check against onnxruntime
 ```

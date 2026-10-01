@@ -93,6 +93,16 @@ def _build_parser() -> argparse.ArgumentParser:
     p_cam.add_argument("--max-window", type=int, default=1600,
                        help="upper bound for the preview window width in pixels "
                             "(default: 1600)")
+    p_cam.add_argument("--resizable", action="store_true",
+                       help="allow dragging the window edges (default: locked)")
+    p_cam.add_argument("--detect-every", type=int, default=1, metavar="N",
+                       help="run inference every Nth frame and reuse the last "
+                            "annotations in between (1 = every frame). Raises the "
+                            "display frame rate when inference is the bottleneck.")
+    p_cam.add_argument("--capture-format", default=None,
+                       choices=["YUYV", "MJPG", "RGB3", "BGR3"],
+                       help="force a pixel format. MJPG sustains 30 FPS at "
+                            "1280x720 where YUYV drops to ~9 FPS (USB bandwidth).")
     p_cam.add_argument("--frames", type=int, default=0,
                        help="stop after N frames (0 = until closed)")
     p_cam.add_argument("--no-window", action="store_true",
@@ -488,9 +498,11 @@ def command_camera(args) -> int:
         executor = ThreadPoolExecutor(max_workers=2,
                                       thread_name_prefix="yolo-pose")
 
+    requested_format = args.capture_format or args.format
     try:
         camera = open_any_camera(args.device, args.width, args.height, args.fps,
-                                 args.format, backend=args.capture_backend)
+                                 requested_format,
+                                 backend=args.capture_backend)
     except CameraError as exc:
         print(f"camera error: {exc}", file=sys.stderr)
         if "not installed" in str(exc) or "no camera backend" in str(exc):
@@ -520,9 +532,9 @@ def command_camera(args) -> int:
         if not args.no_window:
             try:
                 viewer, display = open_viewer(
-                    int(native_w * display_scale),
-                    int(native_h * display_scale),
-                    "yolo-pose — live", headless_dir=args.save_dir)
+                    *window_size, "yolo-pose — live",
+                    headless_dir=args.save_dir,
+                    resizable=args.resizable)
             except ViewerError as exc:
                 print(f"no display available ({exc}); using headless output",
                       file=sys.stderr)
@@ -551,10 +563,14 @@ def command_camera(args) -> int:
             recognizer.detector.backend_name if recognizer else "none")
         size_note = ""
         if display_scale != 1.0:
-            size_note = (f"  window={int(native_w * display_scale)}"
-                         f"x{int(native_h * display_scale)} (x{display_scale:g})")
+            size_note = (f"  window={window_size[0]}x{window_size[1]} "
+                         f"(x{display_scale:g})")
+        lock_note = "" if args.resizable else "  (window locked)"
         print(f"camera {camera.device}: {camera.format}  capture={backend}  "
-              f"inference={inference}  display={display}{size_note}")
+              f"inference={inference}  display={display}{size_note}{lock_note}")
+        if args.detect_every > 1:
+            print(f"detecting every {args.detect_every} frame(s); the overlay is "
+                  f"reused in between")
         mode = "parallel" if run_parallel else "sequential"
         print(f"tasks: {tasks}  ({mode})")
         print("press q or Esc in the window (or Ctrl-C here) to stop")
@@ -562,9 +578,59 @@ def command_camera(args) -> int:
         frame_index = 0
         smoothed = 0.0
         with camera:
+            # Cached detection results: on skipped frames the overlay is redrawn
+            # from the previous detections, which is both cheaper and simpler
+            # than re-running inference.
+            last_pose_result = None
+            last_face_result = None
+            detect_every = max(1, int(args.detect_every))
+
             while True:
                 frame = camera.read()
                 start_time = time.perf_counter()
+
+                skipped = (detect_every > 1 and (frame_index % detect_every)
+                           and (last_pose_result is not None
+                                or last_face_result is not None))
+                if skipped:
+                    # Redraw the previous detections on the fresh frame: the
+                    # display keeps the camera's frame rate while inference runs
+                    # less often.
+                    canvas = np.ascontiguousarray(frame.copy())
+                    person_count = 0
+                    if last_pose_result is not None:
+                        canvas = _annotate(frame, last_pose_result, line_width=2.0)
+                        person_count = len(last_pose_result.poses)
+                    face_count = 0
+                    if last_face_result is not None:
+                        from .face.recognizer import draw_faces
+                        draw_faces(canvas, last_face_result,
+                                   threshold=args.threshold)
+                        face_count = len(last_face_result.faces)
+                    elapsed = time.perf_counter() - start_time
+                    smoothed = (elapsed if smoothed == 0
+                                else 0.9 * smoothed + 0.1 * elapsed)
+                    hud = [f"FPS {1.0 / max(smoothed, 1e-6):5.1f}",
+                           f"person {person_count}"]
+                    if recognizer is not None:
+                        hud.append(f"face {face_count}")
+                    hud.append(f"{inference}/{backend} 1/{detect_every}")
+                    draw_hud(canvas, hud)
+                    if viewer is not None:
+                        viewer.show(canvas)
+                        if hasattr(viewer, "poll_events") and not viewer.poll_events():
+                            break
+                    if recorder is not None and recorder.stdin is not None:
+                        try:
+                            recorder.stdin.write(
+                                np.ascontiguousarray(canvas).tobytes())
+                            frames_written += 1
+                        except (BrokenPipeError, OSError):
+                            recorder = None
+                    frame_index += 1
+                    if args.frames and frame_index >= args.frames:
+                        break
+                    continue
 
                 pose_future = face_future = None
                 if executor is not None:
@@ -585,6 +651,7 @@ def command_camera(args) -> int:
                     person_count = 0
 
                 # --- face pass ---
+                face_result = None
                 face_count = 0
                 if recognizer is not None:
                     try:
@@ -600,6 +667,11 @@ def command_camera(args) -> int:
                         if frame_index == 0:
                             print(f"warning: face recognition failed ({exc})",
                                   file=sys.stderr)
+
+                if detector is not None:
+                    last_pose_result = result
+                if recognizer is not None and face_result is not None:
+                    last_face_result = face_result
 
                 elapsed = time.perf_counter() - start_time
                 smoothed = elapsed if smoothed == 0 else 0.9 * smoothed + 0.1 * elapsed
