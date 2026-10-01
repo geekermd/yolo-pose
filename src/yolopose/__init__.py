@@ -8,7 +8,7 @@ Runtime is used automatically when it is installed, for extra speed.
 
 __version__ = "1.0.0"
 __license__ = "MIT"
-__author__ = "geekmd"
+__author__ = "geekermd"
 
 from .vision.detector import Detector, DetectionResult  # noqa: F401
 from .vision.pose import KEYPOINT_NAMES, Pose, SKELETON_EDGES  # noqa: F401

@@ -9,7 +9,7 @@ description = "Human joint (pose) recognition with YOLO on a dependency-free Num
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
-authors = [{ name = "geekmd" }]
+authors = [{ name = "geekermd" }]
 keywords = ["yolo", "pose-estimation", "keypoints", "onnx", "numpy", "arm64", "v4l2"]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
@@ -30,9 +30,9 @@ pil = ["pillow>=9.0"]
 dev = ["pytest>=7.0", "onnx>=1.16", "onnxruntime>=1.16", "pillow>=9.0"]
 
 [project.urls]
-Homepage = "https://github.com/geekmd/yolo-pose"
-Repository = "https://github.com/geekmd/yolo-pose"
-Issues = "https://github.com/geekmd/yolo-pose/issues"
+Homepage = "https://github.com/geekermd/yolo-pose"
+Repository = "https://github.com/geekermd/yolo-pose"
+Issues = "https://github.com/geekermd/yolo-pose/issues"
 
 [project.scripts]
 yolo-pose = "yolopose.cli:main"

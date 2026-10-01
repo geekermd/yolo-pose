@@ -3,11 +3,11 @@ Upstream-Name: yolo-pose
 Source: https://github.com/geekmd/yolo-pose
 
 Files: *
-Copyright: 2026 geekmd
+Copyright: 2026 geekermd
 License: MIT
 
 Files: debian/*
-Copyright: 2026 geekmd
+Copyright: 2026 geekermd
 License: MIT
 
 License: MIT

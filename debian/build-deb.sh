@@ -156,8 +156,8 @@ Depends: python3 (>= 3.8), python3-numpy (>= 1.20)
 Recommends: python3-pil, python3-onnxruntime, ffmpeg
 Suggests: v4l-utils
 Installed-Size: $INSTALLED_SIZE
-Maintainer: geekmd <geekmd@localhost>
-Homepage: https://github.com/geekmd/yolo-pose
+Maintainer: geekmd <geekermd@users.noreply.github.com>
+Homepage: https://github.com/geekermd/yolo-pose
 Description: human joint (pose) and face recognition with a pure-NumPy ONNX runtime
  yolo-pose detects human body poses and faces using YOLO-family ONNX models
  executed by a dependency-free NumPy inference engine, so the same code runs on
@@ -264,7 +264,7 @@ Bundled or downloaded model weights.
 Models fetched with
 .BR "yolo-pose models pull" .
 .SH SEE ALSO
-Full documentation: https://github.com/geekmd/yolo-pose
+Full documentation: https://github.com/geekermd/yolo-pose
 .SH AUTHOR
 geekmd.  Licensed MIT; model weights carry their own licences (see NOTICE).
 MAN
